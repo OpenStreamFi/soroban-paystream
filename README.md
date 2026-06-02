@@ -1,57 +1,75 @@
 # soroban-paystream
 
-A streaming payments contract built on Stellar's Soroban smart contract platform. Enables real-time, per-second token streaming between addresses — with pause, resume, and cancel support.
+Open-source payment streaming infrastructure for the Stellar ecosystem, built on Soroban smart contracts.
 
-## Features
+## What is this?
 
-- **Create streams** — lock a deposit and stream it to a recipient over time
-- **Withdraw** — recipient claims earned tokens at any time
-- **Pause / Resume** — sender can pause a stream; elapsed pause time is tracked and excluded from claimable amounts
-- **Cancel** — sender cancels, recipient gets what they've earned, sender gets the refund
-- **On-chain events** — typed events emitted on every state change
-- **Per-user stream index** — query all stream IDs for any address
+soroban-paystream is a Soroban smart contract that enables real-time, per-second payment streaming on Stellar. Think of it like a tap — a sender opens a stream, USDC drips continuously into the recipient's claimable balance every second, and the recipient withdraws whenever they want.
 
-## Project Structure
+No money moves every second on-chain. The streaming is a mathematical calculation — elapsed time × rate per second — computed when anyone interacts with the contract. Only three transactions ever cost gas: creating a stream, withdrawing, and cancelling.
 
-```text
-contracts/paystream/
-└── src/
-    ├── lib.rs        ← module registration & entry point
-    ├── types.rs      ← Stream struct, StreamStatus enum
-    ├── storage.rs    ← all reads/writes to contract storage
-    ├── events.rs     ← typed contractevent definitions & publishers
-    ├── errors.rs     ← custom error codes
-    └── contract.rs   ← all public contract functions
-```
+## Why does this exist?
+
+Projects like payroll systems, subscription services, and grant distributions on Stellar need payment streaming infrastructure. soroban-paystream is the open-source primitive they can build on — no proprietary lock-in, fully auditable, free to fork.
+
+## Who is this for?
+
+- Developers building payroll or subscription dApps on Stellar
+- Contributors who want to work on real Soroban infrastructure
+- Anyone who wants to understand how payment streaming works on-chain
 
 ## Contract Functions
 
-| Function | Caller | Description |
-|---|---|---|
-| `create_stream(sender, recipient, token, deposit, start_time, end_time)` | sender | Creates a new stream and locks the deposit |
-| `withdraw(stream_id)` | recipient | Claims all currently earned tokens |
-| `pause_stream(stream_id)` | sender | Pauses the stream, recording the pause timestamp |
-| `resume_stream(stream_id)` | sender | Resumes stream, adds pause duration to total_paused |
-| `cancel_stream(stream_id)` | sender | Pays recipient their share, refunds remainder to sender |
-| `get_claimable(stream_id)` | anyone | Returns claimable token amount right now |
-| `get_stream(stream_id)` | anyone | Returns the full Stream struct |
-| `get_streams_by_user(user)` | anyone | Returns all stream IDs for a given address |
-| `get_stream_count()` | anyone | Returns total number of streams created |
+| Function | Description |
+|---|---|
+| `create_stream` | Lock USDC and open a stream to a recipient |
+| `withdraw` | Recipient pulls out accumulated earnings |
+| `pause_stream` | Sender temporarily freezes the stream |
+| `resume_stream` | Sender unfreezes and continues streaming |
+| `cancel_stream` | Sender stops stream, refunds unstreamed amount |
+| `get_stream` | View full stream details |
+| `get_claimable` | View how much recipient can withdraw right now |
+| `get_streams_by_user` | View all stream IDs for an address |
+| `get_stream_count` | View total streams ever created |
 
-## Build
+## How to Build
 
 ```bash
+# Install Stellar CLI
+cargo install --locked stellar-cli --features opt
+
+# Add WASM target
+rustup target add wasm32-unknown-unknown
+
+# Clone the repo
+git clone https://github.com/OpenStreamFi/soroban-paystream.git
+cd soroban-paystream
+
+# Build
 stellar contract build
 ```
 
-WASM output: `target/wasm32v1-none/release/soroban_paystream.wasm`
-
-## Requirements
-
-- Rust + `wasm32-unknown-unknown` target
-- `stellar-cli` ≥ 25.x
+## How to Test
 
 ```bash
-rustup target add wasm32-unknown-unknown
-cargo install --locked stellar-cli --features opt
+cargo test
 ```
+
+## How to Deploy to Testnet
+
+```bash
+stellar contract deploy \
+  --wasm target/wasm32-unknown-unknown/release/soroban_paystream.wasm \
+  --network testnet \
+  --source YOUR_ACCOUNT_NAME
+```
+
+## Contributing
+
+We welcome contributions of all kinds — contract functions, tests, documentation, gas optimization, and security reviews.
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to get started.
+
+## License
+
+MIT
