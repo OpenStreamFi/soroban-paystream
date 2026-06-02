@@ -32,6 +32,15 @@ Projects like payroll systems, subscription services, and grant distributions on
 | `get_streams_by_user` | View all stream IDs for an address |
 | `get_stream_count` | View total streams ever created |
 
+## Testnet Deployment
+
+The contract is live on Stellar testnet.
+
+**Contract Address:**
+CC2SUYO3WFVMER3SKBUWM3JVI7P4OL73YD6NHWWUAN5OPY4AV46POAWE
+
+You can inspect it on the [Stellar Expert Explorer](https://stellar.expert/explorer/testnet/contract/CC2SUYO3WFVMER3SKBUWM3JVI7P4OL73YD6NHWWUAN5OPY4AV46POAWE).
+
 ## How to Build
 
 ```bash
