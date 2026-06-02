@@ -7,3 +7,6 @@ mod storage;
 mod types;
 
 pub use contract::PayStreamContract;
+
+#[cfg(test)]
+mod tests;
