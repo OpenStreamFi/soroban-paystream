@@ -18,8 +18,11 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
           
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+        
       - name: Install stellar-cli
-        run: cargo install --locked stellar-cli --features opt
+        run: cargo binstall --no-confirm stellar-cli
         
       - name: Run tests
         run: cargo test
@@ -35,8 +38,11 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
           
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+        
       - name: Install stellar-cli
-        run: cargo install --locked stellar-cli --features opt
+        run: cargo binstall --no-confirm stellar-cli
         
       - name: Build contract
         run: stellar contract build
