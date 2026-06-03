@@ -8,7 +8,7 @@
 
 **Open-source payment streaming infrastructure for the Stellar ecosystem.**
 
-Send USDC by the second — no middlemen, no payroll software, no closed APIs. Just a smart contract anyone can build on.
+Send XLM by the second — no middlemen, no payroll software, no closed APIs. Just a smart contract anyone can build on.
 
 
 [Overview](#overview) • [Architecture](#architecture) • [Contract Functions](#contract-functions) • [Getting Started](#getting-started) • [Testing](#testing) • [Roadmap](#roadmap) • [Contributing](#contributing)
@@ -17,7 +17,7 @@ Send USDC by the second — no middlemen, no payroll software, no closed APIs. J
 
 ## Overview
 
-soroban-paystream is a Soroban smart contract that enables **real-time, per-second USDC streaming** between any two Stellar addresses. A sender locks a deposit, and from that moment the recipient's claimable balance grows every second — like a tap that's always open.
+soroban-paystream is a Soroban smart contract that enables **real-time, per-second XLM streaming** between any two Stellar addresses. A sender locks a deposit, and from that moment the recipient's claimable balance grows every second — like a tap that's always open.
 
 ### What This Brings to Stellar
 
@@ -135,7 +135,7 @@ soroban-paystream/
 
 | Function | Caller | Description |
 |---|---|---|
-| `create_stream(sender, recipient, token, deposit, start_time, end_time)` | Sender | Locks USDC and opens a stream. Returns a stream ID. |
+| `create_stream(sender, recipient, token, deposit, start_time, end_time)` | Sender | Locks XLM and opens a stream. Returns a stream ID. |
 | `withdraw(stream_id)` | Recipient | Claims all currently earned tokens. |
 | `pause_stream(stream_id)` | Sender | Freezes the stream. Elapsed pause time is tracked and excluded from earnings. |
 | `resume_stream(stream_id)` | Sender | Unfreezes the stream and continues from where it stopped. |
@@ -256,12 +256,12 @@ test result: ok. 22 passed; 0 failed
 - [x] 22 unit tests, 0 warnings
 - [x] Deployed to Stellar testnet
 
-### Phase 2 — Frontend (In Progress)
-- [ ] Freighter wallet connect
-- [ ] Create stream form
-- [ ] Live stream progress dashboard
-- [ ] Stream history table
-- [ ] Mobile responsive layout
+### Phase 2 — Frontend ✅
+- [x] Freighter wallet connect
+- [x] Create stream form
+- [x] Live stream dashboard with claimable polling
+- [x] Withdraw, pause, resume, cancel actions
+- [x] Role-gated buttons and friendly error messages
 
 ### Phase 3 — Production Hardening
 - [x] GitHub Actions CI pipeline
@@ -272,7 +272,7 @@ test result: ok. 22 passed; 0 failed
 
 ### Phase 4 — Ecosystem
 - [ ] TypeScript SDK for dApp integration
-- [ ] Multi-token support (beyond USDC)
+- [ ] Multi-token support (beyond XLM)
 - [ ] Stream NFT receipts
 - [ ] Batch stream creation
 
