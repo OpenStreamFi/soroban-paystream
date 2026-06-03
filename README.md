@@ -274,7 +274,7 @@ test result: ok. 22 passed; 0 failed
 - [ ] Mainnet deployment
 
 ### Phase 4 — Ecosystem
-- [ ] TypeScript SDK for dApp integration
+- [ ] TypeScript SDK (@openstreamfi/sdk) — npm package wrapping all contract functions so developers can integrate PayStream into their own apps without touching the Stellar SDK directly
 - [ ] Multi-token support (beyond XLM)
 - [ ] Stream NFT receipts
 - [ ] Batch stream creation
