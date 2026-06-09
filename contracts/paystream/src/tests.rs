@@ -197,6 +197,35 @@ mod tests {
         assert_eq!(claimable, 3600);
     }
 
+    #[test]
+    fn test_claimable_recovers_dust_after_end() {
+        let env = setup_env();
+        let sender = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let token_addr = setup_token(&env, &Address::generate(&env), &sender, 10_000);
+        let client = setup_contract(&env);
+
+        // deposit=3650 over a 3600s duration → rate truncates to 1/sec.
+        // rate * duration = 3600, leaving 50 "dust" that must not be stranded.
+        client.create_stream(&sender, &recipient, &token_addr, &3650, &1000, &4600);
+
+        // Mid-stream uses the per-second rate (no dust released yet).
+        env.ledger().set_timestamp(2000);
+        assert_eq!(client.get_claimable(&1), 1000);
+
+        // Once the full duration has elapsed, the entire deposit is claimable.
+        env.ledger().set_timestamp(4600);
+        assert_eq!(client.get_claimable(&1), 3650);
+
+        // And the recipient can actually withdraw all of it.
+        let withdrawn = client.withdraw(&1);
+        assert_eq!(withdrawn, 3650);
+        let token_client = token::Client::new(&env, &token_addr);
+        assert_eq!(token_client.balance(&recipient), 3650);
+        // No tokens left stranded in the contract.
+        assert_eq!(token_client.balance(&client.address), 0);
+    }
+
     // ─── Group 3: test_withdraw ──────────────────────────────────────────────────
 
     #[test]

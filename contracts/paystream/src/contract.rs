@@ -86,8 +86,17 @@ impl PayStreamContract {
             return Ok(0);
         }
 
+        let duration = (stream.end_time - stream.start_time) as i128;
         let elapsed = (now - stream.start_time) as i128 - stream.total_paused as i128;
-        let earned = elapsed * stream.rate_per_sec;
+
+        // `rate_per_sec` is `deposit / duration`, which truncates. Once the full
+        // (unpaused) duration has elapsed, release the entire deposit so the
+        // integer-division remainder ("dust") isn't permanently stranded.
+        let earned = if elapsed >= duration {
+            stream.deposit
+        } else {
+            elapsed * stream.rate_per_sec
+        };
         let claimable = earned - stream.claimed;
 
         Ok(claimable.max(0))
