@@ -574,4 +574,209 @@ mod tests {
         client.create_stream(&sender, &recipient, &token_addr, &3600, &1000, &4600);
         assert_eq!(client.get_stream_count(), 3);
     }
+
+    // ─── Group: test_top_up & test_extend (Issue #31) ───────────────────────────
+
+    #[test]
+    fn test_top_up_success() {
+        let env = setup_env();
+        let sender = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let token_addr = setup_token(&env, &Address::generate(&env), &sender, 50_000);
+        let client = setup_contract(&env);
+        let p = default_stream_params(&env, &sender, &recipient, &token_addr);
+
+        let stream_id = create_stream_from_params(&client, &p);
+
+        // Advance 1000 seconds into the stream (t = 2000)
+        env.ledger().set_timestamp(2000);
+        let claimable_before = client.get_claimable(&stream_id);
+        assert_eq!(claimable_before, 1000);
+
+        // Sender tops up by 2600 tokens
+        // Remaining time: 4600 - 2000 = 2600s
+        // Remaining original deposit: 3600 - 1000 = 2600 tokens
+        // New remaining deposit: 2600 + 2600 = 5200 tokens
+        // New rate: 5200 / 2600 = 2 tokens/sec
+        client.top_up(&stream_id, &2600);
+
+        // Invariant: Pre-top-up earnings must remain exactly unchanged immediately after top-up
+        let claimable_immediately_after = client.get_claimable(&stream_id);
+        assert_eq!(claimable_immediately_after, 1000);
+
+        let stream = client.get_stream(&stream_id);
+        assert_eq!(stream.deposit, 6200);
+        assert_eq!(stream.rate_per_sec, 2);
+        assert_eq!(stream.accrued, 1000);
+
+        // Advance by 500s (t = 2500)
+        env.ledger().set_timestamp(2500);
+        // Should earn: 1000 (pre-topup) + 500 * 2 = 2000 tokens
+        assert_eq!(client.get_claimable(&stream_id), 2000);
+
+        // Advance to stream end (t = 4600)
+        env.ledger().set_timestamp(4600);
+        // Entire new deposit must be fully claimable
+        assert_eq!(client.get_claimable(&stream_id), 6200);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #7)")] // InvalidAmount
+    fn test_top_up_invalid_amount_panics() {
+        let env = setup_env();
+        let sender = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let token_addr = setup_token(&env, &Address::generate(&env), &sender, 10_000);
+        let client = setup_contract(&env);
+        let p = default_stream_params(&env, &sender, &recipient, &token_addr);
+
+        let stream_id = create_stream_from_params(&client, &p);
+        client.top_up(&stream_id, &0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #3)")] // StreamNotActive
+    fn test_top_up_paused_stream_panics() {
+        let env = setup_env();
+        let sender = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let token_addr = setup_token(&env, &Address::generate(&env), &sender, 10_000);
+        let client = setup_contract(&env);
+        let p = default_stream_params(&env, &sender, &recipient, &token_addr);
+
+        let stream_id = create_stream_from_params(&client, &p);
+        client.pause_stream(&stream_id);
+        client.top_up(&stream_id, &1000);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #9)")] // StreamAlreadyEnded
+    fn test_top_up_after_end_time_panics() {
+        let env = setup_env();
+        let sender = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let token_addr = setup_token(&env, &Address::generate(&env), &sender, 10_000);
+        let client = setup_contract(&env);
+        let p = default_stream_params(&env, &sender, &recipient, &token_addr);
+
+        let stream_id = create_stream_from_params(&client, &p);
+        env.ledger().set_timestamp(4600);
+        client.top_up(&stream_id, &1000);
+    }
+
+    #[test]
+    fn test_extend_success() {
+        let env = setup_env();
+        let sender = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let token_addr = setup_token(&env, &Address::generate(&env), &sender, 10_000);
+        let client = setup_contract(&env);
+        // deposit=7200, duration=3600 (start=1000, end=4600), rate=2 tokens/sec
+        let stream_id = client.create_stream(&sender, &recipient, &token_addr, &7200, &1000, &4600);
+
+        // Advance 1000 seconds (t = 2000)
+        env.ledger().set_timestamp(2000);
+        let claimable_before = client.get_claimable(&stream_id);
+        assert_eq!(claimable_before, 2000);
+
+        // Extend end_time from 4600 to 7200 (+2600s)
+        // Remaining unearned deposit: 7200 - 2000 = 5200 tokens
+        // New remaining duration: 7200 - 2000 = 5200s
+        // Lowered effective rate: 5200 / 5200 = 1 token/sec
+        client.extend(&stream_id, &7200);
+
+        // Invariant: Pre-extend earnings must remain exactly unchanged immediately after extend
+        let claimable_immediately_after = client.get_claimable(&stream_id);
+        assert_eq!(claimable_immediately_after, 2000);
+
+        let stream = client.get_stream(&stream_id);
+        assert_eq!(stream.end_time, 7200);
+        assert_eq!(stream.rate_per_sec, 1);
+        assert_eq!(stream.accrued, 2000);
+
+        // Advance 1000s under new rate (t = 3000)
+        env.ledger().set_timestamp(3000);
+        // Should earn: 2000 + 1000 * 1 = 3000 tokens
+        assert_eq!(client.get_claimable(&stream_id), 3000);
+
+        // Advance to extended end (t = 7200)
+        env.ledger().set_timestamp(7200);
+        assert_eq!(client.get_claimable(&stream_id), 7200);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #8)")] // InvalidTimeRange
+    fn test_extend_invalid_time_range_panics() {
+        let env = setup_env();
+        let sender = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let token_addr = setup_token(&env, &Address::generate(&env), &sender, 10_000);
+        let client = setup_contract(&env);
+        let p = default_stream_params(&env, &sender, &recipient, &token_addr);
+
+        let stream_id = create_stream_from_params(&client, &p);
+        // Extending with new_end_time <= current end_time (4600)
+        client.extend(&stream_id, &4600);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #9)")] // StreamAlreadyEnded
+    fn test_extend_after_end_time_panics() {
+        let env = setup_env();
+        let sender = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let token_addr = setup_token(&env, &Address::generate(&env), &sender, 10_000);
+        let client = setup_contract(&env);
+        let p = default_stream_params(&env, &sender, &recipient, &token_addr);
+
+        let stream_id = create_stream_from_params(&client, &p);
+        env.ledger().set_timestamp(4600);
+        client.extend(&stream_id, &6000);
+    }
+
+    #[test]
+    fn test_chained_top_up_and_extend() {
+        let env = setup_env();
+        let sender = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let token_addr = setup_token(&env, &Address::generate(&env), &sender, 50_000);
+        let client = setup_contract(&env);
+
+        // Stream 1000 -> 3000 (2000s), deposit=4000 -> rate=2 tokens/sec
+        let stream_id = client.create_stream(&sender, &recipient, &token_addr, &4000, &1000, &3000);
+
+        // At t = 2000 (1000s elapsed), earned = 2000
+        env.ledger().set_timestamp(2000);
+        assert_eq!(client.get_claimable(&stream_id), 2000);
+
+        // Top up 2000 tokens (remaining deposit becomes 2000 + 2000 = 4000 over 1000s -> rate = 4)
+        client.top_up(&stream_id, &2000);
+        assert_eq!(client.get_claimable(&stream_id), 2000);
+        let s1 = client.get_stream(&stream_id);
+        assert_eq!(s1.deposit, 6000);
+        assert_eq!(s1.rate_per_sec, 4);
+
+        // At t = 2500 (500s at rate 4), earned = 2000 + 500*4 = 4000
+        env.ledger().set_timestamp(2500);
+        assert_eq!(client.get_claimable(&stream_id), 4000);
+
+        // Extend from 3000 to 4500 (remaining time was 500s, new remaining time is 2000s)
+        // Remaining deposit: 6000 - 4000 = 2000 tokens
+        // New rate: 2000 / 2000 = 1 token/sec
+        client.extend(&stream_id, &4500);
+        assert_eq!(client.get_claimable(&stream_id), 4000);
+        let s2 = client.get_stream(&stream_id);
+        assert_eq!(s2.rate_per_sec, 1);
+        assert_eq!(s2.end_time, 4500);
+
+        // Final completion at t = 4500
+        env.ledger().set_timestamp(4500);
+        assert_eq!(client.get_claimable(&stream_id), 6000);
+
+        // Recipient withdraws full 6000
+        let withdrawn = client.withdraw(&stream_id);
+        assert_eq!(withdrawn, 6000);
+        let s3 = client.get_stream(&stream_id);
+        assert_eq!(s3.status, StreamStatus::Completed);
+    }
 }

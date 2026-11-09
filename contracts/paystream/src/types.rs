@@ -23,4 +23,5 @@ pub struct Stream {
     pub status:        StreamStatus,
     pub pause_time:    u64,
     pub total_paused:  u64,
+    pub accrued:       i128,
 }

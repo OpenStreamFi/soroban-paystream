@@ -56,6 +56,7 @@ impl PayStreamContract {
             status:       StreamStatus::Active,
             pause_time:   0,
             total_paused: 0,
+            accrued:      0,
         };
 
         storage::save_stream(&env, stream_id, &stream);
@@ -76,6 +77,13 @@ impl PayStreamContract {
             return Ok(0);
         }
 
+        let earned = Self::compute_earned(&env, &stream);
+        let claimable = earned - stream.claimed;
+
+        Ok(claimable.max(0))
+    }
+
+    fn compute_earned(env: &Env, stream: &Stream) -> i128 {
         let now = if stream.status == StreamStatus::Paused {
             stream.pause_time
         } else {
@@ -83,23 +91,20 @@ impl PayStreamContract {
         };
 
         if now <= stream.start_time {
-            return Ok(0);
+            return stream.accrued;
         }
 
         let duration = (stream.end_time - stream.start_time) as i128;
         let elapsed = (now - stream.start_time) as i128 - stream.total_paused as i128;
 
-        // `rate_per_sec` is `deposit / duration`, which truncates. Once the full
-        // (unpaused) duration has elapsed, release the entire deposit so the
-        // integer-division remainder ("dust") isn't permanently stranded.
-        let earned = if elapsed >= duration {
-            stream.deposit
+        let segment_deposit = stream.deposit - stream.accrued;
+        let segment_earned = if elapsed >= duration {
+            segment_deposit
         } else {
             elapsed * stream.rate_per_sec
         };
-        let claimable = earned - stream.claimed;
 
-        Ok(claimable.max(0))
+        stream.accrued + segment_earned
     }
 
     pub fn withdraw(env: Env, stream_id: u64) -> Result<i128, PayStreamError> {
@@ -214,6 +219,119 @@ impl PayStreamContract {
         stream.status = StreamStatus::Cancelled;
         storage::save_stream(&env, stream_id, &stream);
         events::stream_cancelled(&env, stream_id, &stream.sender);
+
+        Ok(())
+    }
+
+    pub fn top_up(env: Env, stream_id: u64, amount: i128) -> Result<(), PayStreamError> {
+        let mut stream = storage::load_stream(&env, stream_id)
+            .ok_or(PayStreamError::StreamNotFound)?;
+
+        stream.sender.require_auth();
+
+        if stream.status != StreamStatus::Active {
+            return Err(PayStreamError::StreamNotActive);
+        }
+
+        if amount <= 0 {
+            return Err(PayStreamError::InvalidAmount);
+        }
+
+        let now = env.ledger().timestamp();
+        if now >= stream.end_time {
+            return Err(PayStreamError::StreamAlreadyEnded);
+        }
+
+        let earned_so_far = Self::compute_earned(&env, &stream);
+
+        // Pull additional tokens from sender into contract
+        let token_client = token::Client::new(&env, &stream.token);
+        token_client.transfer(&stream.sender, &env.current_contract_address(), &amount);
+
+        // Lock in already earned tokens
+        stream.deposit += amount;
+        stream.accrued = earned_so_far;
+
+        // Reset segment start to now (or start_time if stream hasn't started yet)
+        if now > stream.start_time {
+            stream.start_time = now;
+        }
+        stream.total_paused = 0;
+
+        let remaining_duration = (stream.end_time - stream.start_time) as i128;
+        if remaining_duration <= 0 {
+            return Err(PayStreamError::InvalidTimeRange);
+        }
+
+        let remaining_deposit = stream.deposit - stream.accrued;
+        let new_rate = remaining_deposit / remaining_duration;
+
+        if new_rate <= 0 {
+            return Err(PayStreamError::InvalidAmount);
+        }
+
+        stream.rate_per_sec = new_rate;
+
+        storage::save_stream(&env, stream_id, &stream);
+        events::stream_topped_up(
+            &env,
+            stream_id,
+            &stream.sender,
+            amount,
+            stream.deposit,
+            stream.rate_per_sec,
+        );
+
+        Ok(())
+    }
+
+    pub fn extend(env: Env, stream_id: u64, new_end_time: u64) -> Result<(), PayStreamError> {
+        let mut stream = storage::load_stream(&env, stream_id)
+            .ok_or(PayStreamError::StreamNotFound)?;
+
+        stream.sender.require_auth();
+
+        if stream.status != StreamStatus::Active {
+            return Err(PayStreamError::StreamNotActive);
+        }
+
+        if new_end_time <= stream.end_time {
+            return Err(PayStreamError::InvalidTimeRange);
+        }
+
+        let now = env.ledger().timestamp();
+        if now >= stream.end_time {
+            return Err(PayStreamError::StreamAlreadyEnded);
+        }
+
+        let earned_so_far = Self::compute_earned(&env, &stream);
+
+        // Lock in already earned tokens
+        stream.accrued = earned_so_far;
+
+        // Reset segment start to now (or start_time if stream hasn't started yet)
+        if now > stream.start_time {
+            stream.start_time = now;
+        }
+        stream.end_time = new_end_time;
+        stream.total_paused = 0;
+
+        let remaining_duration = (stream.end_time - stream.start_time) as i128;
+        if remaining_duration <= 0 {
+            return Err(PayStreamError::InvalidTimeRange);
+        }
+
+        let remaining_deposit = stream.deposit - stream.accrued;
+        let new_rate = remaining_deposit / remaining_duration;
+
+        if new_rate <= 0 {
+            return Err(PayStreamError::InvalidAmount);
+        }
+
+        stream.rate_per_sec = new_rate;
+
+        storage::save_stream(&env, stream_id, &stream);
+        events::stream_extended(&env, stream_id, &stream.sender, new_end_time, stream.rate_per_sec);
 
         Ok(())
     }
