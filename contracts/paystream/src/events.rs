@@ -34,6 +34,23 @@ pub struct StreamCancelled {
     pub sender: Address,
 }
 
+#[contractevent]
+pub struct StreamToppedUp {
+    pub stream_id: u64,
+    pub sender: Address,
+    pub amount: i128,
+    pub new_deposit: i128,
+    pub new_rate_per_sec: i128,
+}
+
+#[contractevent]
+pub struct StreamExtended {
+    pub stream_id: u64,
+    pub sender: Address,
+    pub new_end_time: u64,
+    pub new_rate_per_sec: i128,
+}
+
 // ── Publish helpers ───────────────────────────────────────────────────────────
 
 pub fn stream_created(env: &Env, stream_id: u64, sender: &Address, recipient: &Address) {
@@ -74,6 +91,40 @@ pub fn stream_cancelled(env: &Env, stream_id: u64, sender: &Address) {
     StreamCancelled {
         stream_id,
         sender: sender.clone(),
+    }
+    .publish(env);
+}
+
+pub fn stream_topped_up(
+    env: &Env,
+    stream_id: u64,
+    sender: &Address,
+    amount: i128,
+    new_deposit: i128,
+    new_rate_per_sec: i128,
+) {
+    StreamToppedUp {
+        stream_id,
+        sender: sender.clone(),
+        amount,
+        new_deposit,
+        new_rate_per_sec,
+    }
+    .publish(env);
+}
+
+pub fn stream_extended(
+    env: &Env,
+    stream_id: u64,
+    sender: &Address,
+    new_end_time: u64,
+    new_rate_per_sec: i128,
+) {
+    StreamExtended {
+        stream_id,
+        sender: sender.clone(),
+        new_end_time,
+        new_rate_per_sec,
     }
     .publish(env);
 }
